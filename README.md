@@ -11,7 +11,7 @@ go get github.com/serpentdark/go-common-response@latest
 Or pin a specific version:
 
 ```bash
-go get github.com/serpentdark/go-common-response@v0.1.7
+go get github.com/serpentdark/go-common-response@v0.2.0
 ```
 
 ## Features
@@ -297,6 +297,13 @@ go test -v
 ```
 
 ## Changelog
+
+### v0.2.0
+- `Pagination` now dual-emits the canonical 8-field snake_case shape — `current_page`, `items_per_page`, `total_items`, `total_pages`, `has_next_page`, `has_prev_page`, `next_page`, `prev_page` (`next_page`/`prev_page` are nullable and serialize as `null` at the first/last page boundary).
+- The three legacy keys `total`, `page`, `page_size` are retained as **deprecated aliases** on the same struct, so existing consumers keep working unchanged.
+- `ErrorDetail` now dual-emits the trace id as both the legacy `traceId` and the canonical `trace_id` (same value); `Error` and all helper constructors populate both.
+- `NewPagination(total, page, pageSize)` computes all 8 canonical fields plus the 3 legacy aliases consistently.
+- Purely additive — no field removed, no breaking change. Construct `Pagination` via `NewPagination` to keep canonical/legacy values in sync.
 
 ### v0.1.8
 - Added `CodeForStatus(prefix, status)` — returns the canonical `<prefix>-<status>` error code for an HTTP status (e.g. `CodeForStatus("B-NYB", 422)` → `"B-NYB-422"`), falling back to `<prefix>-500` for statuses outside the supported 20-code set.

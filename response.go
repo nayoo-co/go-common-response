@@ -19,12 +19,18 @@ type ErrorResponse struct {
 
 // ErrorDetail contains detailed error information
 type ErrorDetail struct {
-	Code      string       `json:"code"`
-	Message   string       `json:"message"`
-	Details   []ErrorIssue `json:"details,omitempty"`
-	Chain     []string     `json:"chain,omitempty"`
-	TraceID   string       `json:"traceId"`
-	Timestamp string       `json:"timestamp"`
+	Code    string       `json:"code"`
+	Message string       `json:"message"`
+	Details []ErrorIssue `json:"details,omitempty"`
+	Chain   []string     `json:"chain,omitempty"`
+	// TraceID dual-emits as both the legacy camelCase "traceId" and the
+	// canonical snake_case "trace_id". The two keys always carry the same
+	// value; "traceId" is retained as a deprecated alias so existing
+	// consumers do not break. The constructors (Error and its helpers)
+	// populate both fields; prefer them over building ErrorDetail directly.
+	TraceID      string `json:"traceId"`
+	TraceIDSnake string `json:"trace_id"`
+	Timestamp    string `json:"timestamp"`
 }
 
 // ErrorIssue represents a specific error issue
@@ -35,12 +41,44 @@ type ErrorIssue struct {
 	Code    string `json:"code,omitempty"`
 }
 
-// Pagination represents pagination information
+// Pagination represents pagination information.
+//
+// It dual-emits the canonical 8-field snake_case shape alongside the three
+// legacy aliases (total, page, page_size). Build it with NewPagination, which
+// populates every field consistently; constructing it by hand risks the
+// canonical and legacy values drifting apart.
+//
+// Canonical fields:
+//
+//	current_page   - the requested page (1-based)
+//	items_per_page - page size
+//	total_items    - total record count across all pages
+//	total_pages    - number of pages
+//	has_next_page  - whether a page after current_page exists
+//	has_prev_page  - whether a page before current_page exists
+//	next_page      - the next page number, or null when has_next_page is false
+//	prev_page      - the prev page number, or null when has_prev_page is false
+//
+// Legacy aliases (deprecated, kept so existing consumers do not break):
+//
+//	total     == total_items
+//	page      == current_page
+//	page_size == items_per_page
 type Pagination struct {
-	Total      int `json:"total"`
-	Page       int `json:"page"`
-	PageSize   int `json:"page_size"`
-	TotalPages int `json:"total_pages"`
+	// Canonical 8-field snake_case shape.
+	CurrentPage  int  `json:"current_page"`
+	ItemsPerPage int  `json:"items_per_page"`
+	TotalItems   int  `json:"total_items"`
+	TotalPages   int  `json:"total_pages"`
+	HasNextPage  bool `json:"has_next_page"`
+	HasPrevPage  bool `json:"has_prev_page"`
+	NextPage     *int `json:"next_page"`
+	PrevPage     *int `json:"prev_page"`
+
+	// Legacy aliases (deprecated): retained for backward compatibility.
+	Total    int `json:"total"`
+	Page     int `json:"page"`
+	PageSize int `json:"page_size"`
 }
 
 // PaginatedData represents paginated list data
@@ -92,16 +130,23 @@ func Error(code, message, traceID string, details ...ErrorIssue) *ErrorResponse 
 	return &ErrorResponse{
 		Success: false,
 		Error: &ErrorDetail{
-			Code:      code,
-			Message:   message,
-			Details:   details,
-			TraceID:   traceID,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Code:         code,
+			Message:      message,
+			Details:      details,
+			TraceID:      traceID,
+			TraceIDSnake: traceID,
+			Timestamp:    time.Now().UTC().Format(time.RFC3339),
 		},
 	}
 }
 
-// NewPagination creates a pagination object with calculated total pages
+// NewPagination creates a pagination object with calculated total pages.
+//
+// It populates the canonical 8-field snake_case shape (current_page,
+// items_per_page, total_items, total_pages, has_next_page, has_prev_page,
+// next_page, prev_page) and the three legacy aliases (total, page, page_size)
+// with consistent values. next_page/prev_page are nil (serialized as JSON null)
+// at the first/last page boundaries.
 func NewPagination(total, page, pageSize int) Pagination {
 	totalPages := total / pageSize
 	if total%pageSize != 0 {
@@ -111,11 +156,34 @@ func NewPagination(total, page, pageSize int) Pagination {
 		totalPages = 1
 	}
 
+	hasNext := page < totalPages
+	hasPrev := page > 1 && totalPages > 0
+
+	var nextPage, prevPage *int
+	if hasNext {
+		n := page + 1
+		nextPage = &n
+	}
+	if hasPrev {
+		p := page - 1
+		prevPage = &p
+	}
+
 	return Pagination{
-		Total:      total,
-		Page:       page,
-		PageSize:   pageSize,
-		TotalPages: totalPages,
+		// Canonical 8-field shape.
+		CurrentPage:  page,
+		ItemsPerPage: pageSize,
+		TotalItems:   total,
+		TotalPages:   totalPages,
+		HasNextPage:  hasNext,
+		HasPrevPage:  hasPrev,
+		NextPage:     nextPage,
+		PrevPage:     prevPage,
+
+		// Legacy aliases.
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
 	}
 }
 
